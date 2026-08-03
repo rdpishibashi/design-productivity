@@ -197,21 +197,27 @@ def to_excel(df: pd.DataFrame) -> bytes:
 # ---- Graphs ----
 
 def make_reuse_rate_chart(df: pd.DataFrame) -> go.Figure:
-    hover = "%{y:.2f}%<extra>%{fullData.name}</extra>"
+    hover = "%{y:,.2f}%<extra>%{fullData.name}</extra>"
     fig = go.Figure()
     fig.add_bar(name="図形変更率[%]", x=df["指番"], y=df["図形変更率[%]"] * 100, hovertemplate=hover)
     fig.add_bar(name="流用率[%]", x=df["指番"], y=df["流用率[%]"] * 100, hovertemplate=hover)
     fig.add_bar(name="新規作成率[%]", x=df["指番"], y=df["新規作成率[%]"] * 100, hovertemplate=hover)
-    fig.update_layout(barmode="group", yaxis_title="%", xaxis_title="指番", yaxis_ticksuffix="%")
+    fig.update_layout(
+        barmode="group", yaxis_title="%", xaxis_title="指番",
+        yaxis_ticksuffix="%", yaxis_tickformat=",.0f",
+    )
     return fig
 
 
 def make_recovery_effort_chart(df: pd.DataFrame) -> go.Figure:
-    hover = "%{y:.2f} h<extra>%{fullData.name}</extra>"
+    hover = "%{y:,.2f} h<extra>%{fullData.name}</extra>"
     fig = go.Figure()
     fig.add_bar(name="電気設計要因不具合対応工数[h]", x=df["指番"], y=df["電気設計要因不具合対応工数[h]"], hovertemplate=hover)
     fig.add_bar(name="サプライヤー要因不具合対応工数[h]", x=df["指番"], y=df["サプライヤー要因不具合対応工数[h]"], hovertemplate=hover)
-    fig.update_layout(barmode="stack", yaxis_title="工数 [h]", xaxis_title="指番")
+    fig.update_layout(
+        barmode="stack", yaxis_title="工数 [h]", xaxis_title="指番",
+        yaxis_tickformat=",.0f",
+    )
     return fig
 
 
@@ -219,16 +225,16 @@ def make_recovery_effectiveness_charts(df: pd.DataFrame) -> tuple[go.Figure, go.
     fig_shape = go.Figure()
     fig_shape.add_bar(
         name="図形変更効率[図形変更数/h]", x=df["指番"], y=df["図形変更効率[図形変更数/h]"],
-        hovertemplate="%{y:.2f} 図形変更数/h<extra>%{fullData.name}</extra>",
+        hovertemplate="%{y:,.2f} 図形変更数/h<extra>%{fullData.name}</extra>",
     )
-    fig_shape.update_layout(yaxis_title="図形変更数/h", xaxis_title="指番")
+    fig_shape.update_layout(yaxis_title="図形変更数/h", xaxis_title="指番", yaxis_tickformat=",.0f")
 
     fig_drawing = go.Figure()
     fig_drawing.add_bar(
         name="図面変更作業効率[図番数/h]", x=df["指番"], y=df["図面変更作業効率[図番数/h]"],
-        hovertemplate="%{y:.2f} 図番数/h<extra>%{fullData.name}</extra>",
+        hovertemplate="%{y:,.2f} 図番数/h<extra>%{fullData.name}</extra>",
     )
-    fig_drawing.update_layout(yaxis_title="図番数/h", xaxis_title="指番")
+    fig_drawing.update_layout(yaxis_title="図番数/h", xaxis_title="指番", yaxis_tickformat=",.0f")
 
     return fig_shape, fig_drawing
 
