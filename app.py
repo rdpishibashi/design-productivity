@@ -2,12 +2,13 @@ import io
 from pathlib import Path
 
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
 # ---- Constants ----
 
 DEFAULT_EFFORTS_PATH = Path(__file__).parent / "merged_efforts.xlsx"
-DEFAULT_LEDGER_PATH = Path(__file__).parent / "merged_ledger.xlsx"
+DEFAULT_LEDGER_PATH = Path(__file__).parent / "統合図面管理台帳.xlsx"
 
 EFFORT_COL = "作業時間(h)"
 PROJECT_COL = "WBS要素(代入)"
@@ -17,84 +18,95 @@ UF1_TARGET = "不具合対応"
 UF2_ELEC = "電気設計要因"
 UF2_SUPPLIER = "サプライヤー要因"
 
-# Source column names in ledger → output column names
-ENTITY_COL_MAP = {
-    "Deleted Entities": "削除要素数",
-    "Added Entities":   "追加要素数",
-    "Diff Entities":    "差分要素数",
-    "Unchanged Entities": "不変要素数",
-    "Total Entities":   "合計要素数",
-}
+# Source column names in the 台帳データ Summary sheet (already aggregated per 指番)
+LEDGER_SUMMARY_COLS = [
+    "指番",
+    "削除図形総数",
+    "追加図形総数",
+    "変更図形総数",
+    "図形総数",
+    "図形変更率 [%]",
+    "差分ペア総数",
+    "完全新規図面数",
+    "指番図面総数",
+    "流用率 [%]",
+    "新規作成率 [%]",
+]
 
 OUT_COLS = [
     "指番",
+    "削除図形総数",
+    "追加図形総数",
+    "変更図形総数",
+    "図形総数",
+    "図形変更率[%]",
+    "差分ペア総数",
+    "完全新規図面数",
+    "指番図面総数",
+    "流用率[%]",
+    "新規作成率[%]",
     "電気設計要因不具合対応工数[h]",
     "サプライヤー要因不具合対応工数[h]",
     "不具合対応工数[h]",
-    "削除要素数",
-    "追加要素数",
-    "差分要素数",
-    "不変要素数",
-    "合計要素数",
-    "差分要素割合[%]",
-    "差分要素数[個]／不具合対応工数[h]",
+    "図形変更効率[図形変更数/h]",
+    "図面変更作業効率[図番数/h]",
 ]
+
+INT_COLS = ["削除図形総数", "追加図形総数", "変更図形総数", "図形総数", "差分ペア総数", "完全新規図面数", "指番図面総数"]
+HOUR_COLS = ["電気設計要因不具合対応工数[h]", "サプライヤー要因不具合対応工数[h]", "不具合対応工数[h]"]
+EFFICIENCY_COLS = ["図形変更効率[図形変更数/h]", "図面変更作業効率[図番数/h]"]
+PERCENT_COLS = ["図形変更率[%]", "流用率[%]", "新規作成率[%]"]
 
 COL_WIDTHS = {
     "指番": 18,
+    "削除図形総数": 12,
+    "追加図形総数": 12,
+    "変更図形総数": 12,
+    "図形総数": 12,
+    "図形変更率[%]": 14,
+    "差分ペア総数": 12,
+    "完全新規図面数": 14,
+    "指番図面総数": 12,
+    "流用率[%]": 12,
+    "新規作成率[%]": 14,
     "電気設計要因不具合対応工数[h]": 28,
     "サプライヤー要因不具合対応工数[h]": 30,
     "不具合対応工数[h]": 20,
-    "削除要素数": 12,
-    "追加要素数": 12,
-    "差分要素数": 12,
-    "不変要素数": 12,
-    "合計要素数": 12,
-    "差分要素割合[%]": 18,
-    "差分要素数[個]／不具合対応工数[h]": 30,
+    "図形変更効率[図形変更数/h]": 24,
+    "図面変更作業効率[図番数/h]": 24,
 }
 
-# column name → Python format string for browser display
+# column name -> Python format string for browser display
 DISPLAY_FORMATS = {
-    "電気設計要因不具合対応工数[h]":     "{:,.2f}",
-    "サプライヤー要因不具合対応工数[h]": "{:,.2f}",
-    "不具合対応工数[h]":               "{:,.2f}",
-    "削除要素数":                      "{:,}",
-    "追加要素数":                      "{:,}",
-    "差分要素数":                      "{:,}",
-    "不変要素数":                      "{:,}",
-    "合計要素数":                      "{:,}",
-    "差分要素割合[%]":                 "{:,.2f}%",
-    "差分要素数[個]／不具合対応工数[h]":    "{:,.2f}",
+    **{col: "{:,}" for col in INT_COLS},
+    **{col: "{:,.2f}" for col in HOUR_COLS},
+    **{col: "{:,.2f}" for col in EFFICIENCY_COLS},
+    **{col: "{:.2%}" for col in PERCENT_COLS},
 }
 
-# column name → Excel number format
+# column name -> Excel number format
 COL_FORMATS = {
-    "電気設計要因不具合対応工数[h]":     "#,##0.00",
-    "サプライヤー要因不具合対応工数[h]": "#,##0.00",
-    "不具合対応工数[h]":               "#,##0.00",
-    "削除要素数":                      "#,##0",
-    "追加要素数":                      "#,##0",
-    "差分要素数":                      "#,##0",
-    "不変要素数":                      "#,##0",
-    "合計要素数":                      "#,##0",
-    "差分要素割合[%]":                 '#,##0.00"%"',
-    "差分要素数[個]／不具合対応工数[h]":    "#,##0.00",
+    **{col: "#,##0" for col in INT_COLS},
+    **{col: "#,##0.00" for col in HOUR_COLS},
+    **{col: "#,##0.00" for col in EFFICIENCY_COLS},
+    **{col: "0.00%" for col in PERCENT_COLS},
 }
 
 
 # ---- Processing ----
 
 def load_efforts(source) -> pd.DataFrame:
-    """Load all sheets and concat from effort Excel."""
+    """Load 工数データ (single sheet, WBS要素(代入)/USER_FIELD_01/02/作業時間(h))."""
     excel_data = pd.read_excel(source, sheet_name=None)
     df = pd.concat(excel_data.values(), ignore_index=True)
     df.columns = df.columns.str.strip()
+    mask = df[PROJECT_COL].notna()
+    df.loc[mask, PROJECT_COL] = df.loc[mask, PROJECT_COL].astype(str).str.strip()
     return df
 
 
 def calc_effort_by_project(df: pd.DataFrame) -> pd.DataFrame:
-    """Aggregate 電気設計要因 and サプライヤー要因 hours per project (USER_FIELD_01=不具合対応)."""
+    """Aggregate 電気設計要因 and サプライヤー要因 hours per 指番 (USER_FIELD_01=不具合対応)."""
     sub = df[df[UF1_COL] == UF1_TARGET].copy()
 
     if sub.empty:
@@ -123,57 +135,38 @@ def calc_effort_by_project(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def load_ledger(source) -> pd.DataFrame:
-    """Load Merged Data sheet from ledger Excel."""
-    try:
-        return pd.read_excel(source, sheet_name="Merged Data")
-    except Exception:
-        return pd.read_excel(source, sheet_name=0)
-
-
-def calc_ledger_by_project(df: pd.DataFrame) -> pd.DataFrame:
-    """Deduplicate cross-project duplicates (keep newest Recorded Date) and aggregate per project."""
-    df = df.copy()
-    df["Recorded Date"] = pd.to_datetime(df["Recorded Date"], errors="coerce")
-    df = df[df["Child"].notna() & df["Parent"].notna()]
-
-    # For the same (Child, Parent) across projects, keep the row with the newest Recorded Date
-    dedup = (
-        df.sort_values("Recorded Date", ascending=False, na_position="last")
-        .drop_duplicates(subset=["Child", "Parent"], keep="first")
-    )
-
-    summary = (
-        dedup.groupby("Project Number", sort=True)
-        .agg(**{dst: (src, "sum") for src, dst in ENTITY_COL_MAP.items()})
-        .reset_index()
-        .rename(columns={"Project Number": "指番"})
-    )
-    for col in ENTITY_COL_MAP.values():
-        summary[col] = summary[col].astype(int)
-    return summary
+    """Load the pre-aggregated Summary sheet from 台帳データ (指番ごとの指標が既に集計済み)."""
+    df = pd.read_excel(source, sheet_name="Summary")
+    df = df[LEDGER_SUMMARY_COLS].copy()
+    df.columns = [
+        "指番",
+        "削除図形総数", "追加図形総数", "変更図形総数", "図形総数",
+        "図形変更率[%]",
+        "差分ペア総数", "完全新規図面数", "指番図面総数",
+        "流用率[%]", "新規作成率[%]",
+    ]
+    df["指番"] = df["指番"].astype(str).str.strip()
+    for col in INT_COLS:
+        df[col] = df[col].astype(int)
+    return df
 
 
 def build_output(effort_df: pd.DataFrame, ledger_df: pd.DataFrame) -> pd.DataFrame:
-    """Outer join effort and ledger data and compute derived columns."""
-    merged = pd.merge(effort_df, ledger_df, on="指番", how="outer")
+    """Inner join 台帳データ(Summary) and 工数データ on 指番, keep only 指番 present in both, compute derived columns."""
+    merged = pd.merge(ledger_df, effort_df, on="指番", how="inner")
 
-    for col in ["電気設計要因不具合対応工数[h]", "サプライヤー要因不具合対応工数[h]", "不具合対応工数[h]"]:
-        merged[col] = merged[col].fillna(0.0)
-    for col in ENTITY_COL_MAP.values():
-        merged[col] = merged[col].fillna(0).astype(int)
-
-    # 差分要素割合[%] = 差分要素数 / 合計要素数 × 100
-    def _pct(row):
-        total = row["合計要素数"]
-        return float(row["差分要素数"]) / total * 100 if total != 0 else float("nan")
-
-    # 差分要素数[個]／不具合対応工数[h]
-    def _rate(row):
+    # 図形変更効率[図形変更数/h] = 変更図形総数 / 不具合対応工数[h]
+    def _shape_efficiency(row):
         effort = row["不具合対応工数[h]"]
-        return float(row["差分要素数"]) / effort if effort != 0 else float("nan")
+        return float(row["変更図形総数"]) / effort if effort != 0 else float("nan")
 
-    merged["差分要素割合[%]"] = merged.apply(_pct, axis=1)
-    merged["差分要素数[個]／不具合対応工数[h]"] = merged.apply(_rate, axis=1)
+    # 図面変更作業効率[図番数/h] = 差分ペア総数 / 不具合対応工数[h]
+    def _drawing_efficiency(row):
+        effort = row["不具合対応工数[h]"]
+        return float(row["差分ペア総数"]) / effort if effort != 0 else float("nan")
+
+    merged["図形変更効率[図形変更数/h]"] = merged.apply(_shape_efficiency, axis=1)
+    merged["図面変更作業効率[図番数/h]"] = merged.apply(_drawing_efficiency, axis=1)
 
     return merged[OUT_COLS].sort_values("指番").reset_index(drop=True)
 
@@ -201,11 +194,56 @@ def to_excel(df: pd.DataFrame) -> bytes:
     return buf.getvalue()
 
 
+# ---- Graphs ----
+
+def make_reuse_rate_chart(df: pd.DataFrame) -> go.Figure:
+    hover = "%{y:,.2f}%<extra>%{fullData.name}</extra>"
+    fig = go.Figure()
+    fig.add_bar(name="図形変更率[%]", x=df["指番"], y=df["図形変更率[%]"] * 100, hovertemplate=hover)
+    fig.add_bar(name="流用率[%]", x=df["指番"], y=df["流用率[%]"] * 100, hovertemplate=hover)
+    fig.add_bar(name="新規作成率[%]", x=df["指番"], y=df["新規作成率[%]"] * 100, hovertemplate=hover)
+    fig.update_layout(
+        barmode="group", yaxis_title="%", xaxis_title="指番",
+        yaxis_ticksuffix="%", yaxis_tickformat=",.0f",
+    )
+    return fig
+
+
+def make_recovery_effort_chart(df: pd.DataFrame) -> go.Figure:
+    hover = "%{y:,.2f} h<extra>%{fullData.name}</extra>"
+    fig = go.Figure()
+    fig.add_bar(name="電気設計要因不具合対応工数[h]", x=df["指番"], y=df["電気設計要因不具合対応工数[h]"], hovertemplate=hover)
+    fig.add_bar(name="サプライヤー要因不具合対応工数[h]", x=df["指番"], y=df["サプライヤー要因不具合対応工数[h]"], hovertemplate=hover)
+    fig.update_layout(
+        barmode="stack", yaxis_title="工数 [h]", xaxis_title="指番",
+        yaxis_tickformat=",.0f",
+    )
+    return fig
+
+
+def make_recovery_effectiveness_charts(df: pd.DataFrame) -> tuple[go.Figure, go.Figure]:
+    fig_shape = go.Figure()
+    fig_shape.add_bar(
+        name="図形変更効率[図形変更数/h]", x=df["指番"], y=df["図形変更効率[図形変更数/h]"],
+        hovertemplate="%{y:,.2f} 図形変更数/h<extra>%{fullData.name}</extra>",
+    )
+    fig_shape.update_layout(yaxis_title="図形変更数/h", xaxis_title="指番", yaxis_tickformat=",.0f")
+
+    fig_drawing = go.Figure()
+    fig_drawing.add_bar(
+        name="図面変更作業効率[図番数/h]", x=df["指番"], y=df["図面変更作業効率[図番数/h]"],
+        hovertemplate="%{y:,.2f} 図番数/h<extra>%{fullData.name}</extra>",
+    )
+    fig_drawing.update_layout(yaxis_title="図番数/h", xaxis_title="指番", yaxis_tickformat=",.0f")
+
+    return fig_shape, fig_drawing
+
+
 # ---- UI ----
 
 st.set_page_config(page_title="設計生産性分析", page_icon="📊", layout="wide")
 st.title("設計生産性分析")
-st.caption("プロジェクトごとの差分要素数と不具合対応工数を集計します。")
+st.caption("プロジェクトごとの流用率・不具合対応工数・不具合対応効率を集計します。")
 
 col_l, col_r = st.columns(2)
 
@@ -221,7 +259,7 @@ with col_l:
     efforts_source = efforts_upload if efforts_upload else (DEFAULT_EFFORTS_PATH if DEFAULT_EFFORTS_PATH.exists() else None)
 
 with col_r:
-    st.subheader("台帳データ（merged_ledger.xlsx）")
+    st.subheader("台帳データ（統合図面管理台帳.xlsx）")
     if DEFAULT_LEDGER_PATH.exists():
         st.info(f"デフォルトファイルを使用: `{DEFAULT_LEDGER_PATH.name}`")
     ledger_upload = st.file_uploader(
@@ -250,14 +288,18 @@ if st.button("分析実行", type="primary", width="stretch"):
             st.stop()
 
         try:
-            ledger_raw = load_ledger(ledger_source)
-            ledger_df = calc_ledger_by_project(ledger_raw)
+            ledger_df = load_ledger(ledger_source)
         except Exception as e:
             st.error(f"台帳データの読み込みに失敗しました: {e}")
             st.stop()
 
         result = build_output(effort_df, ledger_df)
-        excel_bytes = to_excel(result)
+
+    if result.empty:
+        st.warning("台帳データと工数データの双方に存在する指番がありませんでした。")
+        st.stop()
+
+    excel_bytes = to_excel(result)
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("指番数", len(result))
@@ -272,6 +314,20 @@ if st.button("分析実行", type="primary", width="stretch"):
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         width="stretch",
     )
+
+    st.subheader("流用率")
+    st.plotly_chart(make_reuse_rate_chart(result), width="stretch")
+
+    st.subheader("不具合対応工数")
+    st.plotly_chart(make_recovery_effort_chart(result), width="stretch")
+
+    st.subheader("不具合対応効率")
+    eff_col_l, eff_col_r = st.columns(2)
+    fig_shape, fig_drawing = make_recovery_effectiveness_charts(result)
+    with eff_col_l:
+        st.plotly_chart(fig_shape, width="stretch")
+    with eff_col_r:
+        st.plotly_chart(fig_drawing, width="stretch")
 
     st.subheader("分析結果")
     st.dataframe(
